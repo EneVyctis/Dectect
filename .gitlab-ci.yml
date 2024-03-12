@@ -1,6 +1,22 @@
 ---
-pandoc-pdf:
+
+simple:
+  image:
+    name: pandoc/core
+    entrypoint: ["/bin/sh", "-c"]
+  script:
+    - pandoc --help
+
+advanced:
   image:
     name: pandoc/latex
+    entrypoint: ["/bin/sh", "-c"]
   script:
-    pandoc --help
+    - echo "Lorem ipsum" > lorem_1.md  # create two example files
+    - echo "dolor sit amet" > lorem_2.md
+    - mkdir output  # create output dir
+    - pandoc --output=output/result.pdf *.md
+  artifacts:
+    paths:
+      - output
+
