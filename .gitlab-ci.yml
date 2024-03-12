@@ -8,9 +8,8 @@ simple:
     - pandoc --help
 
 advanced:
-  image:
-    name: pandoc/latex
-    entrypoint: ["/bin/sh", "-c"]
+  image: pandoc/latex
+    #entrypoint: ["/bin/sh", "-c"]
   script:
     - echo "Lorem ipsum" > lorem_1.md  # create two example files
     - echo "dolor sit amet" > lorem_2.md
