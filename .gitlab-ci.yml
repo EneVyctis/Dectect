@@ -1,3 +1,4 @@
+---
 pandoc-pdf:
   image:
     name: pandoc/latex
