@@ -1,5 +1,12 @@
 # NET 4103 - Dectection de présence 
 
+## ESP32-S3-DevKitC-1
+Durant ce projet nous utilisons l'ESP32-S3-DevKitC-1 dont la documentation est trouvable ici :
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/hw-reference/esp32s3/user-guide-devkitc-1-v1.0.html 
+
+Les informations d'installations sont trouvables ici:
+https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/index.html
+
 
 
 ## Getting started
