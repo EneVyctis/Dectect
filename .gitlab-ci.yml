@@ -1,0 +1,6 @@
+simple:
+  image:
+    name: pandoc
+    entrypoint: ["/bin/sh", "-c"]
+  script:
+    pandoc README.md --pdf-engine=pdflatex -o README.pdf
