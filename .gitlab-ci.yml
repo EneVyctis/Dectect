@@ -1,6 +1,5 @@
-simple:
+pandoc-pdf:
   image:
-    name: pandoc
-    entrypoint: ["/bin/sh", "-c"]
+    name: pandoc/latex
   script:
     pandoc --help
