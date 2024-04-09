@@ -9,17 +9,19 @@ typedef struct name\
 	int capacity;\
 } name;\
 \
-void initialise_##name(struct name* list);\
-type* insert_##name(struct name* list);
+void name##_initialise(struct name* list);\
+type* name##_insert(struct name* list);\
+void name##_destroy(struct name* list);\
+
 
 #define DEFINE_LIST(type, name)\
-void initialise_##name(struct name* list)\
+void name##_initialise(struct name* list)\
 {\
 	list->capacity = INITIAL_LIST_CAPACITY;\
 	list->content = malloc(list->capacity * sizeof(type));\
 }\
 \
-type* insert_##name(struct name* list)\
+type* name##_insert(struct name* list)\
 {\
 	if(list->capacity <= list->length)\
 	{\
@@ -29,4 +31,16 @@ type* insert_##name(struct name* list)\
 	\
 	list->length++;\
 	return list->content + (list->length - 1); \
-}
+}\
+\
+void name##_destroy(struct name* list)\
+{\
+	\
+	free(list->content);\
+	\
+	list->capacity = 0;\
+	list->length = 0;\
+	list->content = NULL;\
+}\
+
+
