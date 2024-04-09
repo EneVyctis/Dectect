@@ -10,9 +10,8 @@
 /*
 	This example shows how to scan for available set of APs.
 */
+#include "./../client/client.c"
 #include <string.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
 #include "esp_event.h"
@@ -25,6 +24,7 @@
 
 static const char *TAG = "sniffer";
 
+int sock ;
 
 
 static void print_auth_mode(int authmode)
@@ -192,6 +192,7 @@ static void sniffer(void* buf, wifi_promiscuous_pkt_type_t type)
 					{
 						getMacStr(str, MAC_address_hashset_iterator_next(&it));
 						ESP_LOGI(TAG, "\t Bucket %ld, index : %d, value : %s", it.bucketIndex, it.valueIndex, str);
+						send_to_server(sock,str);
 					}
 
 					ESP_LOGI(TAG, " ");
@@ -277,6 +278,10 @@ static void wifi_scan(void)
 
 void app_main(void)
 {
+	//Initialize socket.
+
+	// Connect to the server.
+	sock = connecting ( ) ;
 	// Initialize NVS
 	esp_err_t ret = nvs_flash_init();
 	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
