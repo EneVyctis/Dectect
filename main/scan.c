@@ -19,9 +19,9 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-
 #include "frames.h"
 #include "utils/collections.h"
+#include "client.c"
 
 /* The examples use WiFi configuration that you can set via project configuration menu
 
@@ -72,7 +72,7 @@ static EventGroupHandle_t s_wifi_event_group;
 static const char *TAG = "wifi station";
 
 static int s_retry_num = 0;
-
+int sock;
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
@@ -247,6 +247,9 @@ static void sniffer(void* buf, wifi_promiscuous_pkt_type_t type)
 			{
 				getMacStr(str, madd);
 				ESP_LOGI(TAG, "New mac address : %s, %ld", str, detectedMacAddresses.objCount);
+				char buffer[MYMSGLEN];
+				sprintf(buffer, "%s", str);
+				send_message(sock, buffer);
 
 				
 				if(detectedMacAddresses.objCount % 5 == 0)
@@ -288,6 +291,7 @@ void app_main(void)
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
 
+	sock = establish_connexion();
 
 	MAC_address_hashset_init(&detectedMacAddresses);
 	pri_hashset_init(&detectedProbeRequests);
@@ -299,5 +303,4 @@ void app_main(void)
 	ESP_ERROR_CHECK(esp_wifi_set_promiscuous_ctrl_filter(&filterCtrl));
 	ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(sniffer));
 	ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
-	
 }
