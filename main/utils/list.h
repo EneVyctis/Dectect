@@ -18,6 +18,7 @@ void name##_destroy(struct name* list);\
 void name##_initialise(struct name* list)\
 {\
 	list->capacity = INITIAL_LIST_CAPACITY;\
+	list->length = 0;\
 	list->content = malloc(list->capacity * sizeof(type));\
 }\
 \
