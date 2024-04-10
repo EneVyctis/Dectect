@@ -7,55 +7,60 @@
 
 #include "esp_log.h"
 
-#define MYMSGLEN 2000
+#include "client.h"
+
 #define ADRESSE_IP_SERVER "192.168.166.163"
 #define PORT_SERVER 8080
+
+int sock;
 
 /**
  * Fonction d'etablissement d'une socket avec le server
  * 
  * renvoit l'identifiant de la socket de transmission
 */
-int establish_connexion() {
-    int sock;
-    struct sockaddr_in server;
+int establish_connexion() 
+{
+	int sock;
+	struct sockaddr_in server;
 
-    /**
-     * Création de la socket
-    */
+	/**
+	 * Création de la socket
+	*/
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
+	sock = socket(AF_INET, SOCK_STREAM, 0);
 
-    if (sock == -1) {
-        printf("Could not create socket \n");
-        return -1;
-    }
-    ESP_LOGI("Socket", "Socket créée\n");
+	if (sock == -1) {
+		printf("Could not create socket \n");
+		return -1;
+	}
+	ESP_LOGI("Socket", "Socket créée\n");
 
-    /**
-     * Enregistrement des infos du serveur
-    */
+	/**
+	 * Enregistrement des infos du serveur
+	*/
 
-    server.sin_addr.s_addr = inet_addr(ADRESSE_IP_SERVER);
-    server.sin_family = AF_INET;
-    server.sin_port = htons(PORT_SERVER);
+	server.sin_addr.s_addr = inet_addr(ADRESSE_IP_SERVER);
+	server.sin_family = AF_INET;
+	server.sin_port = htons(PORT_SERVER);
 
-    /**
-     * Tentative de connexion au serveur
-    */
+	/**
+	 * Tentative de connexion au serveur
+	*/
 
-    int res;
-    if ((res = connect(sock, (struct sockaddr *) &server, sizeof(server)))<0) {
-        ESP_LOGI("Socket", "Connect failed error\n");
-        close(sock);
-        return -1;
-    }
-    
-    ESP_LOGI("Socket", "Return value, %d\n", res);
-    ESP_LOGI("Socket", "Connection establishec, waiting to be accepted\n");
-    return sock;
+	int res;
+	if ((res = connect(sock, (struct sockaddr *) &server, sizeof(server)))<0) {
+		ESP_LOGI("Socket", "Connect failed error\n");
+		close(sock);
+		return -1;
+	}
+	
+	ESP_LOGI("Socket", "Return value, %d\n", res);
+	ESP_LOGI("Socket", "Connection establishec, waiting to be accepted\n");
+	return sock;
 }
 
-void send_message(int sock, char* message) {
-    send(sock, message, strlen(message), 0);
+void send_message(int sock, char* message) 
+{
+	send(sock, message, strlen(message), 0);
 }

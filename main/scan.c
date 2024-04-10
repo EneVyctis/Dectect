@@ -22,7 +22,7 @@
 #include "frames.h"
 #include "sniffer.h"
 #include "utils/collections.h"
-#include "client.c"
+#include "client.h"
 
 /* The examples use WiFi configuration that you can set via project configuration menu
 
@@ -73,7 +73,6 @@ static EventGroupHandle_t s_wifi_event_group;
 static const char *TAG = "wifi station";
 
 static int s_retry_num = 0;
-int sock;
 
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -183,11 +182,11 @@ void app_main(void)
 	}
 	ESP_ERROR_CHECK(ret);
 
-	sock = establish_connexion();
-
-
-	
 	wifi_init_sta();
 
 	init_sniffer();
+
+	sock = establish_connexion();
+	
+
 }
