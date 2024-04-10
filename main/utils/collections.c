@@ -15,6 +15,43 @@
 #define HASH_8b(a) HASH_64b(((uint64_t)(a)) | (((uint64_t)(a)) << 8) | (((uint64_t)(a)) << 16) | (((uint64_t)(a)) << 24) | (((uint64_t)(a)) << 32) | (((uint64_t)(a)) << 40) | (((uint64_t)(a)) << 48) | (((uint64_t)(a)) << 56))
 
 
+#define HASH_TAG(property) \
+	current = 0;\
+	while(current < property.tag_length)\
+	{\
+		if(current + 8 < property.tag_length)\
+		{\
+			value = HASH_64b(*(uint64_t*) (property.values + current));\
+			hash = COMBINE_HASHES_64B(hash, value);\
+			current += 8;\
+		}\
+		else if(current + 4 < property.tag_length)\
+		{\
+			value = HASH_32b(*(uint32_t*) (property.values + current));\
+			hash = COMBINE_HASHES_64B(hash, value);\
+			current += 4;\
+		}\
+		else if(current + 2 < property.tag_length)\
+		{\
+			value = HASH_16b(*(uint16_t*) (property.values + current));\
+			hash = COMBINE_HASHES_64B(hash, value);\
+			current += 2;\
+		}\
+		else\
+		{\
+			value = HASH_8b(property.values[current]);\
+			hash = COMBINE_HASHES_64B(hash, value);\
+			current += 1;\
+		}\
+	}
+
+
+#define EQUAL_TAG(property)\
+	a->property.tag_length == b->property.tag_length\
+	&& IMPLIES(a->property.tag_length > 0, memcmp(a->property.values, b->property.values, a->property.tag_length) == 0)
+
+
+
 uint64_t hashMacAddress(struct MAC_address* a)
 {
 	uint64_t hash1 = HASH_16b(*((uint16_t*) &a->addr[0]));
@@ -38,21 +75,37 @@ bool areMacAddressesEqual(struct MAC_address* a, struct MAC_address* b)
 
 unsigned long hashProbeRequestIdentifier(struct probe_request_identifier* a)
 {
-	uint64_t hash = HASH_16b(*(uint16_t*)&a->OUI);
-	hash = COMBINE_HASHES_64B(hash, HASH_8b(a->OUI[2]));
-	if(a->supported_rates.tag_length == 8)
-		hash = COMBINE_HASHES_64B(hash, HASH_64b(*(uint64_t*)a->supported_rates.values));
+	uint64_t hash = CONST_C;
+	uint64_t value;
 
+#ifdef USE_OUI
+	hash = HASH_16b(*(uint16_t*)&a->OUI);
+	hash = COMBINE_HASHES_64B(hash, HASH_8b(a->OUI[2]));
+#endif
+	int current;
+	
+
+	HASH_TAG(a->supported_rates);
+	HASH_TAG(a->extended_supported_rates);
+	HASH_TAG(a->ht_capabilities);
+
+
+	
 	return hash;
 }
 
 bool areProbeRequestIdentifierEqual(struct probe_request_identifier* a, struct probe_request_identifier* b)
 {
-	return a->OUI[0] == b->OUI[0]
+	return
+#ifdef USE_OUI
+		a->OUI[0] == b->OUI[0]
 		&& a->OUI[1] == b->OUI[1]
-		&& a->OUI[2] == b->OUI[2]
-		&& a->supported_rates.tag_length == b->supported_rates.tag_length
-		&& IMPLIES(a->supported_rates.tag_length == 8, *(uint64_t*) a->supported_rates.values == *(uint64_t*) b->supported_rates.values);
+		&& a->OUI[2] == b->OUI[2] &&
+#endif 
+		EQUAL_TAG(supported_rates)
+		&& EQUAL_TAG(extended_supported_rates)
+		&& EQUAL_TAG(ht_capabilities)
+		;
 }
 
 

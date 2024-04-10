@@ -11,10 +11,11 @@
 
 enum TAG_NUMBERS
 {
-	SSID=0,
-	SUPPORTED_RATES=1,
-	EXTENDED_SUPPORTED_RATES=50,
-	VENDOR_SPECIFIC=50,
+	SSID = 0,
+	SUPPORTED_RATES = 1,
+	HT_CAPABILITIES = 45,
+	EXTENDED_SUPPORTED_RATES = 50,
+	VENDOR_SPECIFIC = 50,
 };
 
 struct frame_control
@@ -51,15 +52,11 @@ struct probe_request
 	struct frame_control frame_control;
 	uint16_t duration;
 
-	struct MAC_address receiver_address;
 	struct MAC_address destination_address;
-	struct MAC_address transmitter_address;
 	struct MAC_address source_address;
-
 	struct MAC_address BSSID;
-	uint16_t fragment_number;
-	uint16_t sequence_number;
-	uint32_t frame_check_sequence;
+
+	uint16_t fragment_sequence_number;
 };
 
 struct Tag
@@ -70,15 +67,19 @@ struct Tag
 };
 
 
-
 struct probe_request_identifier
 {
+#ifdef USE_OUI
 	uint8_t OUI[3];
+#endif
 	struct Tag supported_rates;
+	struct Tag extended_supported_rates;
+	struct Tag ht_capabilities;
 };
 
 void getMacStr(char* macStr, struct MAC_address* mac_addr);
 
 void read_probe_request_frame(wifi_promiscuous_pkt_t* packet, struct probe_request* pr, TAG_lst* lst);
+void probe_request_identifier_destroy(struct probe_request_identifier* pri);
 
 #endif
