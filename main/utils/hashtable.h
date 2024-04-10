@@ -37,7 +37,7 @@ bool name##_contains(struct name* hashtable, type* value);\
 void name##_rehash(struct name* hashtable, int newSize);\
 type* name##_insert(struct name* hashtable, type* value);\
 bool name##_delete(struct name* hashtable, type* value);\
-void name##union_with(struct name* destination, struct name* source);\
+void name##_union_with(struct name* destination, struct name* source);\
 \
 void name##_init_iterator(struct name* hashtable, struct name##_iterator* iterator);\
 bool name##_iterator_has_next(struct name##_iterator* iterator);\
@@ -159,7 +159,7 @@ bool name##_delete(struct name* hashtable, type* value)\
 	return false;\
 }\
 \
-void name##union_with(struct name* destination, struct name* source)\
+void name##_union_with(struct name* destination, struct name* source)\
 {\
 	/*find global length*/\
 	long globalBucketCount = destination->bucketCount;\

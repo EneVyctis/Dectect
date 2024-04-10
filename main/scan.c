@@ -174,9 +174,28 @@ static void sniffer(void* buf, wifi_promiscuous_pkt_type_t type)
 	{
 		case WIFI_PKT_MGMT:
 			frame = (struct frame*) &packet->payload;
-			if (frame->frame_control.subtype != 4){
-				break;
-                }
+			if(frame->frame_control.subtype != 4)
+			{
+
+				struct probe_request pr;
+				TAG_lst tagLst;
+				TAG_lst_initialise(&tagLst);
+				read_probe_request_frame(packet, &pr, &tagLst);
+
+				char str[MAC_ADDR_STR_LEN];
+				getMacStr(str, &pr.source_address);
+
+
+				ESP_LOGI(TAG, "Probe request from %s", str);
+				for(int i=0; i<tagLst.length; i++)
+				{
+					ESP_LOGI(TAG, "\t tag : %d", tagLst.content[i].tag_number);
+					free(tagLst.content[i].values);
+				}
+
+				TAG_lst_destroy(&tagLst);
+			}
+			break;
 		case WIFI_PKT_CTRL:
 			frame = (struct frame*) &packet->payload;
 
@@ -189,7 +208,6 @@ static void sniffer(void* buf, wifi_promiscuous_pkt_type_t type)
 				getMacStr(str, madd);
 				ESP_LOGI(TAG, "New mac address : %s, %ld", str, detectedMacAddresses.objCount);
 
-			
 				
 				if(detectedMacAddresses.objCount % 5 == 0)
 				{
@@ -203,7 +221,7 @@ static void sniffer(void* buf, wifi_promiscuous_pkt_type_t type)
 					while(MAC_address_hashset_iterator_has_next(&it))
 					{
 						getMacStr(str, MAC_address_hashset_iterator_next(&it));
-						ESP_LOGI(TAG, "\t Bucket %ld, index : %d, value : %s", it.bucketIndex, it.valueIndex, str);
+						ESP_LOGI(TAG, "\t %s", str);
 					}
 
 					ESP_LOGI(TAG, " ");
