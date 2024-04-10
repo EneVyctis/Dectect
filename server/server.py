@@ -4,7 +4,7 @@ import csv
 
 ADRESSE = ''  # L'adresse IP sur laquelle le serveur écoute (ici, toutes les interfaces disponibles)
 PORT = 8080   # Le port sur lequel le serveur écoute
-
+listOfMacs = {}
 # Fonction gérant chaque client
 def gerer_client(client, adresse):
     print(f"Connexion de {adresse}")
@@ -20,13 +20,14 @@ def gerer_client(client, adresse):
                 if stringDonnees.strip().lower()[:-1] == "/quit":
                         arreter_serveur()
                         return
-                elif stringDonnees.strip().lower()[:-1] == "/consulter":
-                        count = consulter_nombre()
+                elif stringDonnees.strip().lower()[:-1] == "/count":
+                        count = len(listOfMacs)
                         print(f"Il y a actuellement {count} personnes dans la zone")
+                elif stringDonnees.strip().lower()[:-1] == "/list":
+                        for mac in listOfMacs:
+                                print(mac)
                 else:
-                        with open("data.csv", "a", newline='') as f:
-                                writer = csv.writer(f)
-                                writer.writerow([stringDonnees[:-1]])
+                        listOfMacs[stringDonnees] = 1;
     except Exception as e:
         print(f"Erreur lors de la communication avec {adresse}: {e}")
     

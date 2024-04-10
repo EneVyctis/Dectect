@@ -5,7 +5,7 @@
 # include <stdlib.h>
 # include <string.h>
 # include <unistd.h>
-
+# include "client.h"
 
 # define SERVERPORT 8080
 # define LOCALHOST "127.0.0.1"
@@ -13,7 +13,7 @@
 
 void send_to_server ( int sock, char * string )
 {
-	int code, length, ret ;
+	int code, length ;
 
 	// Send the length of the string.
 	length = strlen ( string ) + 1 ;
