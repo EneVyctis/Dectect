@@ -88,6 +88,7 @@ unsigned long hashProbeRequestIdentifier(struct probe_request_identifier* a)
 	HASH_TAG(a->supported_rates);
 	HASH_TAG(a->extended_supported_rates);
 	HASH_TAG(a->ht_capabilities);
+	HASH_TAG(a->extended_capabilities);
 
 
 	
@@ -105,14 +106,17 @@ bool areProbeRequestIdentifierEqual(struct probe_request_identifier* a, struct p
 		EQUAL_TAG(supported_rates)
 		&& EQUAL_TAG(extended_supported_rates)
 		&& EQUAL_TAG(ht_capabilities)
+		&& EQUAL_TAG(extended_capabilities)
 		;
 }
 
 
 
 DEFINE_HASH_SET(struct MAC_address, MAC_address_hashset, hashMacAddress, areMacAddressesEqual)
+DEFINE_HASH_MAP(struct MAC_address, int64_t, MAC_address_hashmap, hashMacAddress, areMacAddressesEqual)
 DEFINE_HASH_SET(struct probe_request_identifier, pri_hashset, hashProbeRequestIdentifier, areProbeRequestIdentifierEqual)
 
 
 DEFINE_LIST(struct MAC_address, MAC_address_lst)
 DEFINE_LIST(struct Tag, TAG_lst)
+

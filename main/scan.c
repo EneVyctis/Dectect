@@ -12,6 +12,7 @@
 #include "freertos/event_groups.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
+#include "esp_timer.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -61,6 +62,14 @@
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
+
+
+
+
+#define MAX_TIME_BEFORE_CHANNEL_CHANGE 7000000			// 5 sec
+#define MAX_TIME_NO_NEW_ADDRESS 5000000					// 3 sec
+#define MAX_TIME_BEFORE_ADDRESS_IS_TOO_OLD 1200000000 	// 20 min
+
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 
@@ -73,6 +82,13 @@ static EventGroupHandle_t s_wifi_event_group;
 static const char *TAG = "wifi station";
 
 static int s_retry_num = 0;
+
+static uint8_t channels[] = {1, 6, 11};
+static uint8_t currentChannel = 0;
+
+static int64_t timePreviousChannelChange = 0;
+static int64_t timePreviousNewAddress = 0;
+
 
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
@@ -102,7 +118,7 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 	}
 }
 
-void wifi_init_sta(void)
+static void wifi_init()
 {
 	s_wifi_event_group = xEventGroupCreate();
 
@@ -126,24 +142,13 @@ void wifi_init_sta(void)
 														&event_handler,
 														NULL,
 														&instance_got_ip));
+}
 
-	wifi_config_t wifi_config = {
-		.sta = {
-			.ssid = EXAMPLE_ESP_WIFI_SSID,
-			.password = EXAMPLE_ESP_WIFI_PASS,
-			/* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (pasword len => 8).
-			 * If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold value
-			 * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
-			 * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
-			 */
-			.threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
-			.sae_pwe_h2e = ESP_WIFI_SAE_MODE,
-			.sae_h2e_identifier = EXAMPLE_H2E_IDENTIFIER,
-		},
-	};
-	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
-	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
-	ESP_ERROR_CHECK(esp_wifi_start() );
+void wifi_init_sta(wifi_config_t* wifi_config)
+{
+	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, wifi_config));
+	ESP_ERROR_CHECK(esp_wifi_start());
 
 	ESP_LOGI(TAG, "wifi_init_sta finished.");
 
@@ -151,7 +156,7 @@ void wifi_init_sta(void)
 	 * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
 	EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
 			WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-			pdFALSE,
+			pdTRUE,
 			pdFALSE,
 			portMAX_DELAY);
 
@@ -172,6 +177,8 @@ void wifi_init_sta(void)
 
 
 
+
+
 void app_main(void)
 {
 	//Initialize NVS
@@ -182,11 +189,103 @@ void app_main(void)
 	}
 	ESP_ERROR_CHECK(ret);
 
-	wifi_init_sta();
+	wifi_config_t wifi_config = {
+		.sta = {
+			.ssid = EXAMPLE_ESP_WIFI_SSID,
+			.password = EXAMPLE_ESP_WIFI_PASS,
+			/* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (pasword len => 8).
+			 * If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold value
+			 * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
+			 * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
+			 */
+			.threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
+			.sae_pwe_h2e = ESP_WIFI_SAE_MODE,
+			.sae_h2e_identifier = EXAMPLE_H2E_IDENTIFIER,
+		},
+	};
 
+	wifi_init();
 	init_sniffer();
 
-	sock = establish_connexion();
 	
+	//wifi_init_sta();
+	const TickType_t delay = 100 / portTICK_PERIOD_MS;
 
+	int sock;	
+	int64_t currentTime;
+	MAC_address_hashmap_iterator macIT; 
+
+
+	wifi_start_sniffer();
+	currentChannel = 0;
+	esp_wifi_set_channel(channels[currentChannel], WIFI_SECOND_CHAN_NONE);
+
+
+	while(true)
+	{
+		currentTime = esp_timer_get_time();
+		if(timePreviousChannelChange + MAX_TIME_BEFORE_CHANNEL_CHANGE <= currentTime || timePreviousNewAddress + MAX_TIME_NO_NEW_ADDRESS <= currentTime)
+		{
+			if(currentChannel < 3)
+			{
+				ESP_LOGI(TAG, " ");
+				ESP_LOGI(TAG, "Switch to sniffing channel %d", channels[currentChannel]);
+				ESP_LOGI(TAG, " ");
+				
+				esp_wifi_set_channel(channels[currentChannel++], WIFI_SECOND_CHAN_NONE);
+				
+				timePreviousChannelChange = currentTime;
+				timePreviousNewAddress = currentTime;
+			}
+			else if (currentChannel >= 3)
+			{
+				ESP_LOGI(TAG, " ");
+				ESP_LOGI(TAG, "Switch to station");
+				ESP_LOGI(TAG, " ");
+				esp_wifi_stop();
+				wifi_init_sta(&wifi_config);
+ 				sock = establish_connexion();
+				
+				char str[MAC_ADDR_STR_LEN];
+				MAC_address_hashmap_init_iterator(&detectedMacAddresses, &macIT);
+
+				struct MAC_address_hashmap_entry* entry;
+				ESP_LOGI(TAG, "Detected mac addresses : %ld", detectedMacAddresses.objCount);
+				while(MAC_address_hashmap_iterator_has_next(&macIT))
+				{
+					entry = MAC_address_hashmap_iterator_next(&macIT);
+					if(entry->value < currentTime + MAX_TIME_BEFORE_ADDRESS_IS_TOO_OLD)
+					{
+						getMacStr(str, &entry->key);
+						ESP_LOGI(TAG, "\t%s", str);
+					}
+				}
+
+				close(sock);
+
+				esp_wifi_stop();
+				s_retry_num = 0;
+				wifi_start_sniffer();
+				currentChannel = 0;
+				esp_wifi_set_channel(channels[currentChannel], WIFI_SECOND_CHAN_NONE);
+			}
+		}
+		else
+			vTaskDelay(delay);
+		
+	}
 }
+
+
+	// #ifdef USE_OUI
+	// 							if(ppp->supported_rates.tag_length == 8)
+	// 								ESP_LOGI(TAG, "\tOUI : %02x:%02x:%02x, SR : length %d, %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x", ppp->OUI[0], ppp->OUI[1], ppp->OUI[2], ppp->supported_rates.tag_length, ppp->supported_rates.values[0], ppp->supported_rates.values[1], ppp->supported_rates.values[2], ppp->supported_rates.values[3], ppp->supported_rates.values[4], ppp->supported_rates.values[5], ppp->supported_rates.values[6], ppp->supported_rates.values[7]);
+	// 							else if(ppp->supported_rates.tag_length)
+	// 								ESP_LOGI(TAG, "\tOUI : %02x:%02x:%02x, SR : length %d", ppp->OUI[0], ppp->OUI[1], ppp->OUI[2], ppp->supported_rates.tag_length);
+	// #else
+	// 							if(ppp->supported_rates.tag_length == 8)
+	// 								ESP_LOGI(TAG, "\tSR : length %d, %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x", ppp->supported_rates.tag_length, ppp->supported_rates.values[0], ppp->supported_rates.values[1], ppp->supported_rates.values[2], ppp->supported_rates.values[3], ppp->supported_rates.values[4], ppp->supported_rates.values[5], ppp->supported_rates.values[6], ppp->supported_rates.values[7]);
+	// 							else if(ppp->supported_rates.tag_length)
+	// 								ESP_LOGI(TAG, "\tSR : length %d", ppp->supported_rates.tag_length);
+
+	// #endif

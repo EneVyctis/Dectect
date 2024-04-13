@@ -1,15 +1,15 @@
-#include<esp_log.h>
+#include <esp_log.h>
+#include <esp_timer.h>
 
-#include "utils/collections.h"
 #include "frames.h"
 #include "sniffer.h"
 
 
 static const char *TAG = "sniffer";
 
-static MAC_address_hashset detectedMacAddresses;
-static pri_hashset detectedProbeRequests;
-
+MAC_address_hashmap detectedMacAddresses;
+pri_hashset detectedProbeRequests;
+static MAC_address_hashset detectedAPs;
 
 
 static void parse_pri(struct probe_request* pr, TAG_lst* tagLst, struct probe_request_identifier* pri)
@@ -29,6 +29,9 @@ static void parse_pri(struct probe_request* pr, TAG_lst* tagLst, struct probe_re
 
 	pri->ht_capabilities.tag_length = 0;
 	pri->ht_capabilities.values = NULL;
+
+	pri->extended_capabilities.tag_length = 0;
+	pri->extended_capabilities.values = NULL;
 	
 	for(int i=0; i<tagLst->length; i++)
 	{
@@ -52,6 +55,12 @@ static void parse_pri(struct probe_request* pr, TAG_lst* tagLst, struct probe_re
 				pri->ht_capabilities.values = tagLst->content[i].values;
 				break;
 
+			case EXTENDED_CAPABILITIES:
+				pri->extended_capabilities.tag_number = EXTENDED_CAPABILITIES;
+				pri->extended_capabilities.tag_length = tagLst->content[i].tag_length;
+				pri->extended_capabilities.values = tagLst->content[i].values;
+				break;
+
 
 
 			default :
@@ -64,15 +73,29 @@ static void parse_pri(struct probe_request* pr, TAG_lst* tagLst, struct probe_re
 
 
 
+void init_wifi_drivers()
+{
+	ESP_ERROR_CHECK(esp_netif_init());
+	ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_NULL));
+	ESP_ERROR_CHECK(esp_wifi_start());	
+}
 
 
 void init_sniffer()
-{  
-	MAC_address_hashset_init(&detectedMacAddresses);
+{
+	MAC_address_hashmap_init(&detectedMacAddresses);
+	MAC_address_hashset_init(&detectedAPs);
 	pri_hashset_init(&detectedProbeRequests);
+}
 
-	wifi_promiscuous_filter_t filter= {.filter_mask=WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_CTRL};
+void wifi_start_sniffer()
+{
+	wifi_promiscuous_filter_t filter= {.filter_mask=WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_CTRL | WIFI_PROMIS_FILTER_MASK_DATA};
 	wifi_promiscuous_filter_t filterCtrl = {.filter_mask=WIFI_PROMIS_CTRL_FILTER_MASK_RTS};
 
 	ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filter));
@@ -86,101 +109,80 @@ void init_sniffer()
 void sniffer(void* buf, wifi_promiscuous_pkt_type_t type)
 {
 	wifi_promiscuous_pkt_t* packet = (wifi_promiscuous_pkt_t*)buf;
-	struct frame* frame;
-
+	struct frame* frame = (struct frame*) &packet->payload;
+	char str[MAC_ADDR_STR_LEN];
 
 	switch (type)
 	{
-		case WIFI_PKT_MGMT:
-			frame = (struct frame*) &packet->payload;
+		case MANAGEMENT:
 
-			if(frame->frame_control.subtype == 4)
+			switch(frame->frame_control.subtype)
 			{
-				
-				struct probe_request pr;
-				TAG_lst tagLst;
-				TAG_lst_initialise(&tagLst);
-				read_probe_request_frame(packet, &pr, &tagLst);
+				case MANAGEMENT_PROBE_REQUEST:	
 
-				struct probe_request_identifier pri;
+					struct probe_request pr;
+					TAG_lst tagLst;
+					TAG_lst_initialise(&tagLst);
+					read_probe_request_frame(packet, &pr, &tagLst);
 
-				parse_pri(&pr, &tagLst, &pri);
+					struct probe_request_identifier pri;
 
-				struct probe_request_identifier* res = pri_hashset_insert(&detectedProbeRequests, &pri);
+					parse_pri(&pr, &tagLst, &pri);
 
-				if(res == NULL)
-					probe_request_identifier_destroy(&pri);
-				else
-				{
-					ESP_LOGI(TAG, "new probe request : %ld", detectedProbeRequests.objCount);
+					struct probe_request_identifier* res = pri_hashset_insert(&detectedProbeRequests, &pri);
 
-					if(detectedProbeRequests.objCount % 10 == 0)
+					if(res == NULL)
+						probe_request_identifier_destroy(&pri);
+					else
+						ESP_LOGI(TAG, "new probe request : %ld", detectedProbeRequests.objCount);
+					
+
+					TAG_lst_destroy(&tagLst);
+					break;
+
+				case MANAGEMENT_BEACON:
+					struct MAC_address* madd = MAC_address_hashset_insert(&detectedAPs, &frame->address2);
+					
+					if(madd != NULL)
 					{
-						pri_hashset_iterator it;
-						pri_hashset_init_iterator(&detectedProbeRequests, &it);
-						
-						struct probe_request_identifier* ppp;
+						getMacStr(str, madd);
+						ESP_LOGI(TAG, "New access point : %s, %ld", str, detectedAPs.objCount);
 
-						ESP_LOGI(TAG, "All : ");
-
-
-						while(pri_hashset_iterator_has_next(&it))
-						{
-							ppp = pri_hashset_iterator_next(&it);
-
-#ifdef USE_OUI
-							if(ppp->supported_rates.tag_length == 8)
-								ESP_LOGI(TAG, "\tOUI : %02x:%02x:%02x, SR : length %d, %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x", ppp->OUI[0], ppp->OUI[1], ppp->OUI[2], ppp->supported_rates.tag_length, ppp->supported_rates.values[0], ppp->supported_rates.values[1], ppp->supported_rates.values[2], ppp->supported_rates.values[3], ppp->supported_rates.values[4], ppp->supported_rates.values[5], ppp->supported_rates.values[6], ppp->supported_rates.values[7]);
-							else if(ppp->supported_rates.tag_length)
-								ESP_LOGI(TAG, "\tOUI : %02x:%02x:%02x, SR : length %d", ppp->OUI[0], ppp->OUI[1], ppp->OUI[2], ppp->supported_rates.tag_length);
-#else
-							if(ppp->supported_rates.tag_length == 8)
-								ESP_LOGI(TAG, "\tSR : length %d, %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x", ppp->supported_rates.tag_length, ppp->supported_rates.values[0], ppp->supported_rates.values[1], ppp->supported_rates.values[2], ppp->supported_rates.values[3], ppp->supported_rates.values[4], ppp->supported_rates.values[5], ppp->supported_rates.values[6], ppp->supported_rates.values[7]);
-							else if(ppp->supported_rates.tag_length)
-								ESP_LOGI(TAG, "\tSR : length %d", ppp->supported_rates.tag_length);
-
-#endif
-						}
 					}
-				}
+					break;
 
-				
-
-				TAG_lst_destroy(&tagLst);
 			}
 			break;
-		case WIFI_PKT_CTRL:
-			frame = (struct frame*) &packet->payload;
 
-			//ESP_LOGI(TAG, "Ctrl : %d, subtype : %d", frame->frame_control.type, frame->frame_control.subtype);
-			
-			char str[MAC_ADDR_STR_LEN];
-			struct MAC_address* madd = MAC_address_hashset_insert(&detectedMacAddresses, &frame->address2);
-			if(madd != NULL)
+
+
+		case CONTROL:
+
+			bool isNewMacAddress = false;
+			int64_t time = esp_timer_get_time();
+
+			struct MAC_address_hashmap_entry* madd = MAC_address_hashmap_insert_or_modify(&detectedMacAddresses, &frame->address2, &time, &isNewMacAddress);
+			if(isNewMacAddress)
 			{
-				getMacStr(str, madd);
-				ESP_LOGI(TAG, "New mac address : %s, %ld", str, detectedMacAddresses.objCount);
-
-				
-				if(detectedMacAddresses.objCount % 5 == 0)
-				{
-					ESP_LOGI(TAG, " ");
-					ESP_LOGI(TAG, " ");
-					ESP_LOGI(TAG, "%ld Detected mac addresses in %ld buckets : ", detectedMacAddresses.objCount, detectedMacAddresses.bucketCount);
-					
-					MAC_address_hashset_iterator it; 
-					MAC_address_hashset_init_iterator(&detectedMacAddresses, &it);
-
-					while(MAC_address_hashset_iterator_has_next(&it))
-					{
-						getMacStr(str, MAC_address_hashset_iterator_next(&it));
-						ESP_LOGI(TAG, "\t %s", str);
-					}
-
-					ESP_LOGI(TAG, " ");
-				}
+				getMacStr(str, &madd->key);
+				ESP_LOGI(TAG, "New RTS mac address : %s, %ld", str, detectedMacAddresses.objCount);
 			}
 
+			break;
+		
+		
+		case DATA:
+			if(!MAC_address_hashset_contains(&detectedAPs, &frame->address2))
+			{
+				bool isNewMacAddress = false;
+				int64_t time = esp_timer_get_time();
+				struct MAC_address_hashmap_entry* madd = MAC_address_hashmap_insert_or_modify(&detectedMacAddresses, &frame->address2, &time, &isNewMacAddress);
+				if(isNewMacAddress)
+				{
+					getMacStr(str, &madd->key);
+					ESP_LOGI(TAG, "New data mac address : %s, %ld", str, detectedMacAddresses.objCount);
+				}
+			}
 			break;
 		default:
 			break;

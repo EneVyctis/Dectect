@@ -12,7 +12,7 @@
 #define ADRESSE_IP_SERVER "192.168.166.163"
 #define PORT_SERVER 8080
 
-int sock;
+//int sock;
 
 /**
  * Fonction d'etablissement d'une socket avec le server
