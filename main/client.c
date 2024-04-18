@@ -62,5 +62,6 @@ int establish_connexion()
 
 void send_message(int sock, char* message) 
 {
+	ESP_LOGI("Send Message", "%s %d", message, strlen(message));
 	send(sock, message, strlen(message), 0);
 }

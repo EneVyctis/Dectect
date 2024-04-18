@@ -258,6 +258,7 @@ void app_main(void)
 					{
 						getMacStr(str, &entry->key);
 						ESP_LOGI(TAG, "\t%s", str);
+						send_message(sock, str);
 					}
 				}
 
