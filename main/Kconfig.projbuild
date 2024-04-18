@@ -65,3 +65,10 @@ menu "Example Configuration"
     endchoice
 
 endmenu
+menu "Adresse du serveur (IPv4)"
+    config SERVER_ADDRESS
+        string "Adresse du serveur"
+        default "192.168.166.163"
+        help
+            "L'adresse IPv4 du serveur auquel on envoit les adresses MAC"
+endmenu

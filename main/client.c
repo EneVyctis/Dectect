@@ -9,7 +9,7 @@
 
 #include "client.h"
 
-#define ADRESSE_IP_SERVER "192.168.166.163"
+#define ADRESSE_IP_SERVER CONFIG_SERVER_ADDRESS
 #define PORT_SERVER 8080
 
 //int sock;
