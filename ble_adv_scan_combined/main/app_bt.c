@@ -6,7 +6,6 @@
  * SPDX-License-Identifier: Unlicense OR CC0-1.0
  */
 #include <stdio.h>
-#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_bt.h"
@@ -15,7 +14,15 @@
 #include "nvs_flash.h"
 #include "freertos/queue.h"
 #include "bt_hci_common.h"
+#include <string.h>
 
+//#define WIFI
+#ifdef WIFI
+#include "esp_wifi.h"
+#include "wifi.h"
+#include "client.h"
+extern wifi_config_t wifi_config;
+#endif
 
 static const char *TAG = "BLE_ADV_SCAN";
 
@@ -85,6 +92,24 @@ static void periodic_timer_callback(void *arg)
     check_and_remove_stale_devices(); // Vérifie et supprime les appareils obsolètes
     ESP_LOGI(TAG, "Number of received advertising reports: %d", scanned_count);
     ESP_LOGI(TAG, "Nombre final d'appareils détectés : %d", detected_count);
+    for (int i = 0; i<detected_count; i++) {
+        char macStr[18];
+        sprintf(macStr, "%02x:%02x:%02x:%02x:%02x:%02x",
+		detected_devices[i].addr[0],
+		detected_devices[i].addr[1],
+		detected_devices[i].addr[2],
+		detected_devices[i].addr[3],
+		detected_devices[i].addr[4],
+		detected_devices[i].addr[5]);
+        ESP_LOGI(TAG,"%s",macStr);
+        //send_message(sock, macStr);
+    }
+#ifdef WIFI
+    wifi_init_sta(&wifi_config);
+    int sock = establish_connexion();
+
+    esp_wifi_stop();
+    #endif
 }
 
 /*
@@ -448,12 +473,16 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 5000000));
 
     /* Initialize NVS — it is used to store PHY calibration data */
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK( ret );
+	esp_err_t ret = nvs_flash_init();
+	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+	  ESP_ERROR_CHECK(nvs_flash_erase());
+	  ret = nvs_flash_init();
+	}
+	ESP_ERROR_CHECK(ret);
+
+#ifdef WIFI
+    wifi_init();
+#endif
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
     ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
