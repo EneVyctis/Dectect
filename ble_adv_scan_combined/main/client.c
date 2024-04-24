@@ -32,7 +32,7 @@ int establish_connexion()
 		printf("Could not create socket \n");
 		return -1;
 	}
-	ESP_LOGI("Socket", "Socket créée\n");
+	ESP_LOGI("Socket", "Socket créée %d\n", sock);
 
 	/**
 	 * Enregistrement des infos du serveur

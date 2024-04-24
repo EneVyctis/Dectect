@@ -72,8 +72,8 @@ menu "Adresse du serveur"
         help
             Adresse IPv4 du serveur vers lequel renvoyer les adresses MAC vues
     config SERVER_PORT
-        string "Server port"
-        default "8080"
+        int "Server port"
+        default 8080
         help
             Adresse du port sur laquelle le serveur écoute
 

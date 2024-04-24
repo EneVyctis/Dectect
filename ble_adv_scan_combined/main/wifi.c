@@ -8,6 +8,9 @@
 #include "esp_wifi.h"
 #include "wifi.h"
 
+#include "lwip/err.h"
+#include "lwip/sys.h"
+
 #define EXAMPLE_ESP_WIFI_SSID CONFIG_ESP_WIFI_SSID
 #define EXAMPLE_ESP_WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
 
@@ -56,6 +59,7 @@ wifi_config_t wifi_config = {
 			.threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
 			.sae_pwe_h2e = ESP_WIFI_SAE_MODE,
 			.sae_h2e_identifier = EXAMPLE_H2E_IDENTIFIER,
+			.channel = 0 // n'impose pas de channel précis pour la connexion
 		},
 	};
 
@@ -64,14 +68,14 @@ wifi_config_t wifi_config = {
 int s_retry_num = 0;
 
 
-static EventGroupHandle_t s_wifi_event_group;
+EventGroupHandle_t s_wifi_event_group;
 
 void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     char*TAG ="event_handler";
 	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
 		ESP_LOGI(TAG, "Lancement de la connexion au Wifi");
-		esp_wifi_connect();
+		ESP_ERROR_CHECK(esp_wifi_connect());
 	}
 	else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) 
 	{
@@ -79,7 +83,7 @@ void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, voi
 		{
 			esp_wifi_connect();
 			s_retry_num++;
-			ESP_LOGI(TAG, "retry to connect to the AP");
+			ESP_LOGI(TAG, "retry to connect to the AP, %d", s_retry_num);
 		} 
 		else
 			xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
@@ -132,8 +136,11 @@ void wifi_init_sta(wifi_config_t* wifi_config)
 {
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, wifi_config));
-	ESP_ERROR_CHECK(esp_wifi_start());
+	wifi_config_t control;
+	ESP_ERROR_CHECK(esp_wifi_get_config(WIFI_IF_STA, &control));
     char* TAG = "Wifi";
+	ESP_LOGI("Wifi_init_sta", "%s", control.sta.ssid);
+	ESP_ERROR_CHECK(esp_wifi_start());
 
 	ESP_LOGI(TAG, "wifi_init_sta finished.");
 
@@ -156,4 +163,7 @@ void wifi_init_sta(wifi_config_t* wifi_config)
 	} else {
 		ESP_LOGE(TAG, "UNEXPECTED EVENT");
 	}
+	#ifdef WIFI_POUR_LE_PROJET
+	#endif
+	ESP_LOGI(TAG, "Fin de Wifi_init_sta");
 }

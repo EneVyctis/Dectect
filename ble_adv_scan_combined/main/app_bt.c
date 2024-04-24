@@ -6,8 +6,11 @@
  * SPDX-License-Identifier: Unlicense OR CC0-1.0
  */
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "esp_system.h"
 #include "esp_bt.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -16,13 +19,193 @@
 #include "bt_hci_common.h"
 #include <string.h>
 
-//#define WIFI
-#ifdef WIFI
+
+#include "lwip/err.h"
+#include "lwip/sys.h"
+
+#define WIFI_POUR_LE_PROJET
+#ifdef WIFI_POUR_LE_PROJET
 #include "esp_wifi.h"
-#include "wifi.h"
+#include "esp_event.h"
+//#include "wifi.h"
 #include "client.h"
-extern wifi_config_t wifi_config;
+wifi_config_t wifi_config;
 #endif
+
+
+//#include "freertos/FreeRTOS.h"
+//#include "freertos/task.h"
+//#include "esp_system.h"
+//#include "esp_log.h"
+//#include "esp_wifi.h"
+//#include "wifi.h"
+
+//#include "lwip/err.h"
+//#include "lwip/sys.h"
+
+#define EXAMPLE_ESP_WIFI_SSID CONFIG_ESP_WIFI_SSID
+#define EXAMPLE_ESP_WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
+
+#if CONFIG_ESP_WPA3_SAE_PWE_HUNT_AND_PECK
+#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_HUNT_AND_PECK
+#define EXAMPLE_H2E_IDENTIFIER ""
+#elif CONFIG_ESP_WPA3_SAE_PWE_HASH_TO_ELEMENT
+#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_HASH_TO_ELEMENT
+#define EXAMPLE_H2E_IDENTIFIER CONFIG_ESP_WIFI_PW_ID
+#elif CONFIG_ESP_WPA3_SAE_PWE_BOTH
+#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_BOTH
+#define EXAMPLE_H2E_IDENTIFIER CONFIG_ESP_WIFI_PW_ID
+#endif
+#if CONFIG_ESP_WIFI_AUTH_OPEN
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
+#elif CONFIG_ESP_WIFI_AUTH_WEP
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WEP
+#elif CONFIG_ESP_WIFI_AUTH_WPA_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_PSK
+#elif CONFIG_ESP_WIFI_AUTH_WPA2_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
+#elif CONFIG_ESP_WIFI_AUTH_WPA_WPA2_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA_WPA2_PSK
+#elif CONFIG_ESP_WIFI_AUTH_WPA3_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA3_PSK
+#elif CONFIG_ESP_WIFI_AUTH_WPA2_WPA3_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_WPA3_PSK
+#elif CONFIG_ESP_WIFI_AUTH_WAPI_PSK
+#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
+#endif
+
+
+
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+
+wifi_config_t wifi_config = {
+		.sta = {
+			.ssid = EXAMPLE_ESP_WIFI_SSID,
+			.password = EXAMPLE_ESP_WIFI_PASS,
+			/* Authmode threshold resets to WPA2 as default if password matches WPA2 standards (pasword len => 8).
+			 * If you want to connect the device to deprecated WEP/WPA networks, Please set the threshold value
+			 * to WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK and set the password with length and format matching to
+			 * WIFI_AUTH_WEP/WIFI_AUTH_WPA_PSK standards.
+			 */
+			.threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
+			.sae_pwe_h2e = ESP_WIFI_SAE_MODE,
+			.sae_h2e_identifier = EXAMPLE_H2E_IDENTIFIER,
+			.channel = 0 // n'impose pas de channel précis pour la connexion
+		},
+	};
+
+
+#define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_RETRY
+int s_retry_num = 0;
+
+
+static EventGroupHandle_t s_wifi_event_group;
+
+void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
+{
+    char*TAG ="event_handler";
+	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+		ESP_LOGI(TAG, "Lancement de la connexion au Wifi");
+		esp_wifi_connect();
+	}
+	else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) 
+	{
+		if (s_retry_num < EXAMPLE_ESP_MAXIMUM_RETRY) 
+		{
+			esp_wifi_connect();
+			s_retry_num++;
+			ESP_LOGI(TAG, "retry to connect to the AP, %d", s_retry_num);
+		} 
+		else {
+			xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+        }
+		ESP_LOGI(TAG,"connect to the AP fail");
+	} 
+	else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) 
+	{
+		ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+		ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+		s_retry_num = 0;
+		xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+	}
+	else if (event_base == WIFI_EVENT) {
+		ESP_LOGI(TAG, "Wifi event(%s) n°%ld detected",event_base,  event_id);
+	}
+	else {
+		ESP_LOGI(TAG, "Base : %s", event_base);
+	}
+
+}
+
+
+bool premier_passage = 1;
+void wifi_init() {
+    s_wifi_event_group = xEventGroupCreate();
+
+    ESP_ERROR_CHECK(esp_netif_init());
+
+    if (premier_passage) {
+        ESP_ERROR_CHECK(esp_event_loop_create_default());
+        premier_passage = 0;
+	    esp_netif_create_default_wifi_sta();
+    }
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    esp_event_handler_instance_t instance_any_id;
+	esp_event_handler_instance_t instance_got_ip;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+														ESP_EVENT_ANY_ID,
+														&event_handler,
+														NULL,
+														&instance_any_id));
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+														IP_EVENT_STA_GOT_IP,
+														&event_handler,
+														NULL,
+														&instance_got_ip));
+
+}
+
+void wifi_init_sta(wifi_config_t* wifi_config)
+{
+	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, wifi_config));
+	wifi_config_t control;
+	ESP_ERROR_CHECK(esp_wifi_get_config(WIFI_IF_STA, &control));
+    char* TAG = "Wifi";
+	ESP_LOGI("Wifi_init_sta", "%s", control.sta.ssid);
+	ESP_ERROR_CHECK(esp_wifi_start());
+
+	ESP_LOGI(TAG, "wifi_init_sta finished.");
+
+	/* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
+	 * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
+	EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+			WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+			pdTRUE,
+			pdFALSE,
+			portMAX_DELAY);
+
+	/* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
+	 * happened. */
+	if (bits & WIFI_CONNECTED_BIT) {
+		ESP_LOGI(TAG, "connected to ap SSID:%s password:%s",
+				 EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
+	} else if (bits & WIFI_FAIL_BIT) {
+		ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s",
+				 EXAMPLE_ESP_WIFI_SSID, EXAMPLE_ESP_WIFI_PASS);
+	} else {
+		ESP_LOGE(TAG, "UNEXPECTED EVENT");
+	}
+	#ifdef WIFI_POUR_LE_PROJET
+	#endif
+	ESP_LOGI(TAG, "Fin de Wifi_init_sta");
+}
+
+
 
 static const char *TAG = "BLE_ADV_SCAN";
 
@@ -87,30 +270,6 @@ void check_and_remove_stale_devices(void) {
     }
 }
 
-static void periodic_timer_callback(void *arg)
-{
-    check_and_remove_stale_devices(); // Vérifie et supprime les appareils obsolètes
-    ESP_LOGI(TAG, "Number of received advertising reports: %d", scanned_count);
-    ESP_LOGI(TAG, "Nombre final d'appareils détectés : %d", detected_count);
-    for (int i = 0; i<detected_count; i++) {
-        char macStr[18];
-        sprintf(macStr, "%02x:%02x:%02x:%02x:%02x:%02x",
-		detected_devices[i].addr[0],
-		detected_devices[i].addr[1],
-		detected_devices[i].addr[2],
-		detected_devices[i].addr[3],
-		detected_devices[i].addr[4],
-		detected_devices[i].addr[5]);
-        ESP_LOGI(TAG,"%s",macStr);
-        //send_message(sock, macStr);
-    }
-#ifdef WIFI
-    wifi_init_sta(&wifi_config);
-    int sock = establish_connexion();
-
-    esp_wifi_stop();
-    #endif
-}
 
 /*
  * @brief: BT controller callback function, used to notify the upper layer that
@@ -454,23 +613,80 @@ reset:
     }
 }
 
-
-void app_main(void)
-{
+void lancement_bluetooth(void) {
     bool continue_commands = 1;
     int cmd_cnt = 0;
 
-    const esp_timer_create_args_t periodic_timer_args = {
-        .callback = &periodic_timer_callback,
-        .name = "periodic"
-    };
+    esp_vhci_host_register_callback(&vhci_host_cb);
+    while (continue_commands) {
+        if (continue_commands && esp_vhci_host_check_send_available()) {
+            switch (cmd_cnt) {
+            case 0: hci_cmd_send_reset(); ++cmd_cnt; break;
+            case 1: hci_cmd_send_set_evt_mask(); cmd_cnt=cmd_cnt+4; break;
 
-    /* Create timer for logging scanned devices. */
-    esp_timer_handle_t periodic_timer;
-    ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
+            /* Send advertising commands. 
+            case 2: hci_cmd_send_ble_set_adv_param(); ++cmd_cnt; break;
+            case 3: hci_cmd_send_ble_set_adv_data(); ++cmd_cnt; break;
+            case 4: hci_cmd_send_ble_adv_start(); ++cmd_cnt; break;
+            */
 
-    /* Start periodic timer for 5 sec. */
-    ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 5000000));
+            /* Send scan commands. */
+            case 5: hci_cmd_send_ble_scan_params(); ++cmd_cnt; break;
+            case 6: hci_cmd_send_ble_scan_start(); ++cmd_cnt; break;
+            default: continue_commands = 0; break;
+            }
+            ESP_LOGI(TAG, "BLE Advertise, cmd_sent: %d", cmd_cnt);
+        }
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    xTaskCreatePinnedToCore(&hci_evt_process, "hci_evt_process", 4096, NULL, 6, NULL, 0);
+
+}
+
+
+static void periodic_timer_callback(void *arg)
+{
+    check_and_remove_stale_devices(); // Vérifie et supprime les appareils obsolètes
+    ESP_LOGI(TAG, "Number of received advertising reports: %d", scanned_count);
+    ESP_LOGI(TAG, "Nombre final d'appareils détectés : %d", detected_count);
+    ESP_ERROR_CHECK(esp_bt_controller_disable());
+    ESP_ERROR_CHECK(esp_bt_controller_deinit());
+
+#ifdef WIFI_POUR_LE_PROJET
+    ESP_LOGI(TAG, "Lancement du code après wifi_init_STA");
+    int sock = establish_connexion();
+    if (sock != -1) {
+        for (int i = 0; i<detected_count; i++) {
+            char macStr[18];
+            sprintf(macStr, "%02x:%02x:%02x:%02x:%02x:%02x",
+            detected_devices[i].addr[0],
+            detected_devices[i].addr[1],
+            detected_devices[i].addr[2],
+            detected_devices[i].addr[3],
+            detected_devices[i].addr[4],
+            detected_devices[i].addr[5]);
+            ESP_LOGI(TAG,"%s",macStr);
+            send_message(sock, macStr);
+        }
+    }
+
+    #endif
+    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    esp_err_t ret;
+    if ((ret = esp_bt_controller_init(&bt_cfg)) != ESP_OK) {
+        ESP_LOGI(TAG, "Bluetooth controller initialize failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    if ((ret = esp_bt_controller_enable(ESP_BT_MODE_BLE)) != ESP_OK) {
+        ESP_LOGI(TAG, "Bluetooth controller enable failed: %s", esp_err_to_name(ret));
+        return;
+    }
+    lancement_bluetooth();
+}
+
+void app_main(void)
+{
+
 
     /* Initialize NVS — it is used to store PHY calibration data */
 	esp_err_t ret = nvs_flash_init();
@@ -480,9 +696,7 @@ void app_main(void)
 	}
 	ESP_ERROR_CHECK(ret);
 
-#ifdef WIFI
-    wifi_init();
-#endif
+    ESP_LOGI(TAG, "inside");
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
     ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
@@ -507,27 +721,22 @@ void app_main(void)
         ESP_LOGE(TAG, "Queue creation failed");
         return;
     }
+    lancement_bluetooth();
 
-    esp_vhci_host_register_callback(&vhci_host_cb);
-    while (continue_commands) {
-        if (continue_commands && esp_vhci_host_check_send_available()) {
-            switch (cmd_cnt) {
-            case 0: hci_cmd_send_reset(); ++cmd_cnt; break;
-            case 1: hci_cmd_send_set_evt_mask(); ++cmd_cnt; break;
+    wifi_init();
+    wifi_init_sta(&wifi_config);
 
-            /* Send advertising commands. */
-            case 2: hci_cmd_send_ble_set_adv_param(); ++cmd_cnt; break;
-            case 3: hci_cmd_send_ble_set_adv_data(); ++cmd_cnt; break;
-            case 4: hci_cmd_send_ble_adv_start(); ++cmd_cnt; break;
+    int sock = establish_connexion();
+    send_message(sock, "00:00:00:00:00:00");
+    const esp_timer_create_args_t periodic_timer_args = {
+        .callback = &periodic_timer_callback,
+        .name = "periodic"
+    };
 
-            /* Send scan commands. */
-            case 5: hci_cmd_send_ble_scan_params(); ++cmd_cnt; break;
-            case 6: hci_cmd_send_ble_scan_start(); ++cmd_cnt; break;
-            default: continue_commands = 0; break;
-            }
-            ESP_LOGI(TAG, "BLE Advertise, cmd_sent: %d", cmd_cnt);
-        }
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-    xTaskCreatePinnedToCore(&hci_evt_process, "hci_evt_process", 4096, NULL, 6, NULL, 0);
+    /* Create timer for logging scanned devices. */
+    esp_timer_handle_t periodic_timer;
+    ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
+
+    /* Start periodic timer for 5 sec. */
+    ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 5000000));
 }
