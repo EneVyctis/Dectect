@@ -1,6 +1,7 @@
 import socket
 import threading
 import csv
+import time
 
 ADRESSE = ''  # L'adresse IP sur laquelle le serveur écoute (ici, toutes les interfaces disponibles)
 PORT = 8080   # Le port sur lequel le serveur écoute
@@ -23,11 +24,15 @@ def gerer_client(client, adresse):
                 elif stringDonnees.strip().lower()[:-1] == "/count":
                         count = len(listOfMacs)
                         print(f"Il y a actuellement {count} personnes dans la zone")
-                elif stringDonnees.strip().lower()[:-1] == "/list":
+                elif stringDonnees.strip().lower()[:-1] == "/list": 
                         for mac in listOfMacs:
                                 print(mac)
                 else:
-                        listOfMacs[stringDonnees] = 1;
+                    print(len(stringDonnees))
+                    for k in range(len(stringDonnees)//17):
+                        i = k*17
+                        print(stringDonnees[i:i+17])
+                        listOfMacs[stringDonnees[i:i+17]] = time.time()
     except Exception as e:
         print(f"Erreur lors de la communication avec {adresse}: {e}")
     
@@ -37,17 +42,28 @@ def gerer_client(client, adresse):
     except Exception as e:
         print(f"Erreur lors de la fermeture de la connexion avec {adresse}: {e}")
 
+# Fonction actualisant la liste des macs
+def actualiser_macs():
+     while True:
+        time.sleep(20)
+        t = time.time()
+        # Filtrer les clients inactifs
+        macs_inactifs = [mac for mac in listOfMacs if listOfMacs[mac] < t - 40]
+        for mac in macs_inactifs:
+            print(f"Supprime {mac} de la liste des MACs")
+            listOfMacs.pop(mac)
+
 # Fonction pour arrêter le serveur
 def arreter_serveur():
     print("Arrêt du serveur en cours...")
+    for client in threading.enumerate():
+        if client is threading.current_thread():
+            continue
+        if hasattr(client, 'shutdown'):
+            client.shutdown(socket.SHUT_RDWR)
+            client.close()
     serveur.close()
     print("Serveur arrêté.")
-
-def consulter_nombre():
-        with open("data.csv", "r", newline='') as f:
-                reader = csv.reader(f)
-                count = sum(1 for line in reader)
-                return count
 
 # Crée un objet socket pour le serveur
 serveur = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -62,8 +78,9 @@ except Exception as e:
     print(f"Erreur lors du démarrage du serveur: {e}")
     serveur.close()
     exit()
-
 # Boucle principale pour accepter les connexions entrantes
+thread_manage_list = threading.Thread(target = actualiser_macs)
+thread_manage_list.start()
 while True:
     try:
         # Accepte la connexion entrante et récupère le socket client et l'adresse du client
@@ -76,4 +93,4 @@ while True:
         print(f"Erreur lors de la gestion d'une connexion entrante: {e}")
 
 # Ferme le socket du serveur (ce code ne sera jamais atteint dans ce contexte)
-serveur.close()
+serveur.close() 
