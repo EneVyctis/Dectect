@@ -669,7 +669,7 @@ static void periodic_timer_callback(void *arg)
             send_message(sock, macStr);
         }
     }
-
+    close(sock);
     #endif
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     esp_err_t ret;
