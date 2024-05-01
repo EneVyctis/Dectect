@@ -2,12 +2,43 @@ import socket
 import threading
 import csv
 import time
-
+import sqlite3
 ADRESSE = ''  # L'adresse IP sur laquelle le serveur écoute (ici, toutes les interfaces disponibles)
 PORT = [8080,8000]   # Le port sur lequel le serveur écoute
 listOfMacsWifi = {}
 listOfMacsBluetooth = {}
 # Fonction gérant chaque client
+
+path_sqlite = "affluence.db"
+def init_affluence_db():
+    conn = sqlite3.connect('affluence.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS affluence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lieu TEXT,
+            affluence INTEGER,
+            latitude REAL,
+            longitude REAL,
+            datetime DATETIME
+        )
+    ''')
+    conn.commit()
+    conn.close()
+init_affluence_db()
+
+
+def inserer_appareil(count):
+    conn = sqlite3.connect(path_sqlite)
+    c = conn.cursor()
+    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    #coordonnees du ritz 
+    lat = 48.623877
+    lon = 2.446239
+    c.execute("INSERT INTO affluence (lieu, affluence, latitude, longitude, datetime) VALUES (?, ?, ?, ?, ?)",
+                      ('ritz', count*3, lat, lon, current_time))
+    conn.commit()
+    conn.close()
 def gerer_client_wifi(client, adresse):
     print(f"Connexion de {adresse}")
     try:
@@ -88,6 +119,12 @@ def actualiser_macs():
         for mac in macs_inactifs_blue:
             print(f'Supprime {mac} de la liste des MACs')
             listOfMacsBluetooth.pop(mac)
+        macs_uniques = set(listOfMacsWifi.keys()) | set(listOfMacsBluetooth.keys())
+        if len(macs_uniques) > 0:
+            print(f"Nombre de clients uniques: {len(macs_uniques)}")
+            inserer_appareil(len(macs_uniques)/3)
+        
+        
 # Fonction pour arrêter le serveur
 def arreter_serveur():
     print("Arrêt du serveur en cours...")
