@@ -36,7 +36,7 @@ def inserer_appareil(count):
     lat = 48.623877
     lon = 2.446239
     c.execute("INSERT INTO affluence (lieu, affluence, latitude, longitude, datetime) VALUES (?, ?, ?, ?, ?)",
-                      ('ritz', count*3, lat, lon, current_time))
+                      ('ritz', count/3, lat, lon, current_time))
     conn.commit()
     conn.close()
 def gerer_client_wifi(client, adresse):
@@ -50,15 +50,9 @@ def gerer_client_wifi(client, adresse):
             else:
                 stringDonnees = donnees.decode('utf-8')  # Décode les données en UTF-8
                 print(f"Reception de {adresse}: {stringDonnees}")
-                if stringDonnees.strip().lower()[:-1] == "/quit":
-                        arreter_serveur()
-                        return
                 elif stringDonnees.strip().lower()[:-1] == "/count":
-                        count = len(listOfMacsWifi)
+                        count = len(listOfMacsWifi)//3
                         print(f"Il y a actuellement {count} personnes dans la zone")
-                elif stringDonnees.strip().lower()[:-1] == "/list": 
-                        for mac in listOfMacsWifi:
-                                print(mac)
                 else:
                     for k in range(len(stringDonnees)//17):
                         i = k*17
@@ -83,15 +77,9 @@ def gerer_client_bluetooth(client, adresse):
             else:
                 stringDonnees = donnees.decode('utf-8')  # Décode les données en UTF-8
                 print(f"Reception de {adresse}: {stringDonnees}")
-                if stringDonnees.strip().lower()[:-1] == "/quit":
-                        arreter_serveur()
-                        return
                 elif stringDonnees.strip().lower()[:-1] == "/count":
-                        count = len(listOfMacsBluetooth)
+                        count = len(listOfMacsBluetooth)//3
                         print(f"Il y a actuellement {count} personnes dans la zone")
-                elif stringDonnees.strip().lower()[:-1] == "/list": 
-                        for mac in listOfMacsBluetooth:
-                                print(mac)
                 else:
                     for k in range(len(stringDonnees)//17):
                         i = k*17
