@@ -50,7 +50,7 @@ def gerer_client_wifi(client, adresse):
             else:
                 stringDonnees = donnees.decode('utf-8')  # Décode les données en UTF-8
                 print(f"Reception de {adresse}: {stringDonnees}")
-                elif stringDonnees.strip().lower()[:-1] == "/count":
+                if stringDonnees.strip().lower()[:-1] == "/count":
                         count = len(listOfMacsWifi)//3
                         print(f"Il y a actuellement {count} personnes dans la zone")
                 else:
@@ -77,7 +77,7 @@ def gerer_client_bluetooth(client, adresse):
             else:
                 stringDonnees = donnees.decode('utf-8')  # Décode les données en UTF-8
                 print(f"Reception de {adresse}: {stringDonnees}")
-                elif stringDonnees.strip().lower()[:-1] == "/count":
+                if stringDonnees.strip().lower()[:-1] == "/count":
                         count = len(listOfMacsBluetooth)//3
                         print(f"Il y a actuellement {count} personnes dans la zone")
                 else:
